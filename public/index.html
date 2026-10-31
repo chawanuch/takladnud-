@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7efe8">
+  <title>ตากหลาดนัด — ตลาดของคนมีของ</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/index.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ตากหลาดนัด หน้าหลัก"><span class="brand-mark">ต</span><span>ตากหลาด<span class="brand-light">นัด</span><small>ตลาดของคนมีของ</small></span></a>
+    <nav class="topnav" aria-label="เมนูหลัก"><a class="active" href="#market">เดินตลาด</a><a href="#shops">ร้านค้า</a><button id="open-account" class="nav-cta">สำหรับร้านค้า <span>↗</span></button></nav>
+  </header>
+  <main>
+    <section class="hero" id="market">
+      <div class="hero-copy"><p class="eyebrow"><span></span> ตลาดนัดมีชีวิต ทุกวัน</p><h1>ของอร่อย<br>อยู่ตรง<span class="accent">ไหนนะ?</span></h1><p class="hero-note">เดินเล่นให้เพลิน แล้วให้แผนที่พาไปเจอร้านโปรดของคุณ</p>
+        <div class="market-select"><label for="market-select">กำลังดูตลาด</label><select id="market-select"><option value="">กำลังค้นหาตลาด...</option></select><span aria-hidden="true">⌄</span></div>
+        <div class="hero-meta"><span class="live-dot"></span><span id="market-summary">สำรวจร้านค้าในตลาดวันนี้</span></div></div>
+      <div class="hero-art" aria-hidden="true"><div class="sun-disc"></div><div class="art-stall"><div class="awning"></div><div class="counter"><i></i><i></i><i></i></div></div><span class="art-note note-one">ของดีอยู่แถวนี้ ↗</span><span class="art-note note-two">made with ♡</span><span class="art-flower">✳</span></div>
+    </section>
+    <section class="explore" id="shops">
+      <div class="section-heading"><div><p class="eyebrow">THE MARKET MAP</p><h2>เลือกเดินในแบบคุณ</h2></div><span class="map-date" id="map-date"></span></div>
+      <div class="controls"><label class="searchbox"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="ค้นหาร้านหรือของที่อยากกิน..." autocomplete="off"><kbd>/</kbd></label><div class="categories" id="categories" aria-label="กรองตามหมวดหมู่"></div></div>
+      <div class="market-layout"><section class="map-panel" aria-label="แผนผังตลาด"><div class="map-toolbar"><div><span class="map-kicker">YOU ARE HERE</span><strong id="map-title">แผนผังตลาด</strong></div><span class="map-badge"><i></i> อัปเดตวันนี้</span></div><div class="map-viewport" id="map-viewport"><div class="market-map" id="market-map"><div class="map-aisle aisle-a">ทางเดินหลัก</div><div class="map-aisle aisle-b"></div><div class="map-landmark entrance">ประตูเข้า <b>↓</b></div><div class="map-landmark rest">พักผ่อน<br>☕</div><div id="stall-layer"></div></div></div><div class="map-legend"><span><i class="legend-dot occupied"></i>มีร้านค้า</span><span><i class="legend-dot available"></i>แผงว่าง</span><span><i class="legend-dot unavailable"></i>ปิดใช้งาน</span><button id="map-reset" type="button">จัดกึ่งกลาง ↗</button></div></section>
+        <aside class="shop-panel"><div class="list-head"><div><span class="map-kicker">FIND YOUR FAVOURITE</span><h3>ร้านในตลาด <span id="shop-count">0</span></h3></div><button class="filter-toggle" id="clear-filter" type="button">ล้างตัวกรอง</button></div><div id="shop-list" class="shop-list" aria-live="polite"><div class="loading-state">กำลังตามหาร้านเด็ด...</div></div><p class="list-foot" id="list-foot">แตะชื่อร้านเพื่อดูตำแหน่งบนแผนที่</p></aside></div>
+      <p class="qr-hint"><span>✳</span> ส่งต่อแผนที่นี้ให้เพื่อนได้ — เปิดจาก QR code ที่หน้าตลาด</p>
+    </section>
+    <section class="seller-banner"><div><p class="eyebrow">HEY, MARKET MAKER</p><h2>มีของดี อยากมีที่ขาย?</h2><p>มาจองพื้นที่ แล้วให้คนทั้งตลาดได้รู้จักร้านคุณ</p></div><button id="seller-join" type="button">เริ่มต้นเป็นร้านค้า <span>↗</span></button><span class="banner-spark" aria-hidden="true">✳</span></section>
+  </main>
+  <footer><a class="brand footer-brand" href="/"><span class="brand-mark">ต</span><span>ตากหลาดนัด<small>แผนที่เล็ก ๆ สำหรับการค้นพบครั้งใหญ่</small></span></a><span>© ตากหลาดนัด · เดินตลาดให้สนุกนะ</span></footer>
+  <dialog id="account-dialog" class="account-dialog"><button class="dialog-close" id="close-account" aria-label="ปิด" type="button">×</button><div class="dialog-mark">ต</div><p class="eyebrow">FOR MARKET MAKERS</p><h2 id="account-title">ยินดีต้อนรับกลับ</h2><p id="account-note">เข้าระบบเพื่อจัดการร้านและการจองของคุณ</p><div id="account-content"></div></dialog>
+  <dialog id="shop-dialog" class="shop-dialog"><button class="dialog-close" id="close-shop" aria-label="ปิด" type="button">×</button><div id="shop-detail"></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
