@@ -13,6 +13,7 @@ function escapeHtml(value = "") { return String(value).replace(/[&<>\"']/g, c =>
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("show"), 3000); }
 function setLoading(target, message) { target.innerHTML = `<div class="loading-state">${escapeHtml(message)}</div>`; }
 function shopIcon(category = "") { return ({ "อาหาร": "🍜", "เครื่องดื่ม": "🥤", "ของหวาน": "🍰", "เสื้อผ้า": "👕", "งานคราฟต์": "🧺", "ของใช้": "🌼" })[category] || "✳"; }
+function shopImage(category = "") { return ({ "อาหาร": "/images/shop-food.jpg", "เครื่องดื่ม": "/images/shop-drink.jpg", "ของหวาน": "/images/shop-dessert.jpg", "งานคราฟต์": "/images/shop-craft.jpg" })[category] || "/images/shop-food.jpg"; }
 function shopForStall(id) { return state.map.find(stall => Number(stall.id) === Number(id))?.shop || null; }
 
 async function loadMarkets() {
@@ -24,6 +25,7 @@ async function loadMarkets() {
 async function loadMarket() {
   if (!state.marketId) return;
   const market = await api(`/api/markets/${state.marketId}`); $("#map-title").textContent = market.name; $("#market-summary").textContent = market.address || "มีร้านค้าให้ค้นพบในตลาดวันนี้";
+  $("#market-directions").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(market.address || "อำเภอเมืองตาก จังหวัดตาก")}`;
   $(".brand > span:last-child").innerHTML = `${escapeHtml(market.name)}<small>${escapeHtml(market.address || "ตลาดของคนมีของ")}</small>`;
   $("#map-date").textContent = new Date(`${state.date}T12:00:00`).toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const result = await api(`/api/markets/${state.marketId}/map?date=${encodeURIComponent(state.date)}`); state.map = result.stalls || []; renderMap(); await loadShops();
@@ -33,7 +35,7 @@ function renderMap() {
     const x = Number(stall.x) || 5 + (i % 8) * 12, y = Number(stall.y) || 15 + Math.floor(i / 8) * 22;
     const label = stall.shop?.name ? `<span>${escapeHtml(stall.shop.name)}</span>` : "";
     const description = stall.shop ? `ร้าน ${stall.shop.name}` : stall.status === "available" ? "ว่าง" : "ปิดใช้งาน";
-    return `<button class="stall ${stall.status}" data-stall="${stall.id}" style="left:${Math.max(2, Math.min(96, x))}%;top:${Math.max(4, Math.min(90, y))}%" type="button" aria-label="แผง ${escapeHtml(stall.code)} ${escapeHtml(description)}"><b>${escapeHtml(stall.code)}</b>${label}</button>`;
+    return `<button class="stall ${stall.status}" data-stall="${stall.id}" style="left:${Math.max(2, Math.min(96, x))}%;top:${Math.max(4, Math.min(90, y))}%" type="button" aria-label="แผง ${escapeHtml(stall.code)} ${escapeHtml(description)}" title="${escapeHtml(stall.shop?.name || description)}"><b>${escapeHtml(stall.code)}</b>${label}</button>`;
   }).join("");
   stallLayer.querySelectorAll(".stall").forEach(button => button.addEventListener("click", () => { const shop = shopForStall(button.dataset.stall); if (shop) openShop(shop.id); else showToast(button.classList.contains("available") ? "แผงนี้ยังไม่มีร้านค้าในวันที่เลือก" : "แผงนี้ปิดใช้งาน"); }));
 }
@@ -48,13 +50,13 @@ function renderShops() {
   $("#categories").innerHTML = categories.map(c => `<button type="button" class="category-chip ${state.category === c ? "selected" : ""}" data-category="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("");
   $("#categories").querySelectorAll("button").forEach(button => button.addEventListener("click", () => { state.category = button.dataset.category; loadShops(); }));
   if (!state.shops.length) { shopList.innerHTML = '<div class="empty-state"><span>✳</span><strong>ยังไม่เจอร้านที่ตามหา</strong><p>ลองเปลี่ยนคำค้น หรือเลือกหมวดอื่นดูนะ</p></div>'; return; }
-  shopList.innerHTML = state.shops.map(s => `<button type="button" class="shop-row" data-shop="${s.id}"><span class="shop-avatar">${shopIcon(s.category)}</span><span class="shop-info"><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(s.category || "ร้านค้า")}</small></span><span class="stall-code">${escapeHtml(s.stallCode)}</span><span class="row-arrow">↗</span></button>`).join("");
+  shopList.innerHTML = state.shops.map(s => `<button type="button" class="shop-row" data-shop="${s.id}" aria-label="กดดูรายละเอียดร้าน ${escapeHtml(s.name)}"><img class="shop-avatar-image" src="${shopImage(s.category)}" alt=""><span class="shop-info"><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(s.category || "ร้านค้า")}</small></span><span class="stall-code">${escapeHtml(s.stallCode)}</span><span class="row-arrow">กดดู ↗</span></button>`).join("");
   shopList.querySelectorAll("[data-shop]").forEach(button => button.addEventListener("click", () => openShop(button.dataset.shop)));
 }
 async function openShop(id) {
   try {
     const s = await api(`/api/markets/${state.marketId}/shops/${id}?date=${encodeURIComponent(state.date)}`);
-    $("#shop-detail").innerHTML = `<div class="detail-icon">${shopIcon(s.category)}</div><p class="eyebrow">MEET THE MAKER · ${escapeHtml(s.stallCode)}</p><h2>${escapeHtml(s.name)}</h2><span class="detail-category">${escapeHtml(s.category || "ร้านค้า")}</span><p class="detail-description">${escapeHtml(s.description || "ร้านนี้กำลังเตรียมเรื่องราวดี ๆ มาเล่าให้คุณฟัง")}</p>${s.contact ? `<p class="detail-contact">ติดต่อร้าน <strong>${escapeHtml(s.contact)}</strong></p>` : ""}<button class="detail-map" id="focus-stall" type="button">ดูตำแหน่งแผง ${escapeHtml(s.stallCode)} บนแผนที่ ↗</button>`;
+    $("#shop-detail").innerHTML = `<img class="detail-photo" src="${shopImage(s.category)}" alt=""><p class="eyebrow">MEET THE MAKER · ${escapeHtml(s.stallCode)}</p><h2>${escapeHtml(s.name)}</h2><span class="detail-category">${escapeHtml(s.category || "ร้านค้า")}</span><p class="detail-description">${escapeHtml(s.description || "ร้านนี้กำลังเตรียมเรื่องราวดี ๆ มาเล่าให้คุณฟัง")}</p>${s.contact ? `<p class="detail-contact">ติดต่อร้าน <strong>${escapeHtml(s.contact)}</strong></p>` : ""}<button class="detail-map" id="focus-stall" type="button">ดูตำแหน่งแผง ${escapeHtml(s.stallCode)} บนแผนที่ ↗</button>`;
     const dialog = $("#shop-dialog"); dialog.showModal(); $("#focus-stall").addEventListener("click", () => { dialog.close(); const stall = state.map.find(item => item.shop?.id == id); const pin = stall && $(`[data-stall="${stall.id}"]`); pin?.scrollIntoView({ behavior: "smooth", block: "center" }); pin?.classList.add("focused"); setTimeout(() => pin?.classList.remove("focused"), 1600); });
   } catch (error) { showToast(error.message); }
 }

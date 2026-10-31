@@ -29,16 +29,47 @@ async function initializeSchema() {
   for (const sql of ddl) await pool.query(sql);
 }
 
+async function seedShowcaseShops(marketId, shopList, bookingDate) {
+  for (const [index, shopData] of shopList.entries()) {
+    let shopRows = await pool.query("SELECT id FROM shops WHERE email=? LIMIT 1", [shopData.email]);
+    let shopId;
+    if (shopRows.length) {
+      shopId = Number(shopRows[0].id);
+    } else {
+      const passwordHash = await bcrypt.hash(`${shopData.email}:${Date.now()}:${Math.random()}`, 12);
+      const result = await pool.query(
+        "INSERT INTO shops (email,password_hash,name,category,description,contact) VALUES (?,?,?,?,?,?)",
+        [shopData.email, passwordHash, shopData.name, shopData.category, shopData.description, shopData.contact]
+      );
+      shopId = Number(result.insertId);
+    }
+
+    const stallRows = await pool.query("SELECT id FROM stalls WHERE market_id=? AND stall_code=? LIMIT 1", [marketId, `A${String(index + 1).padStart(2, "0")}`]);
+    if (!stallRows.length) continue;
+    const existingBooking = await pool.query(
+      "SELECT id FROM bookings WHERE stall_id=? AND booking_date=? AND status IN ('pending','confirmed') LIMIT 1",
+      [stallRows[0].id, bookingDate]
+    );
+    if (!existingBooking.length) {
+      await pool.query("INSERT INTO bookings (shop_id,stall_id,booking_date,status) VALUES (?,?,?,'confirmed')", [shopId, stallRows[0].id, bookingDate]);
+    }
+  }
+}
+
 async function seedInitialMarket() {
-  const marketName = "ตลาดตัวอย่าง ตากหลาดนัด";
-  let rows = await pool.query("SELECT id FROM markets WHERE name=? LIMIT 1", [marketName]);
+  const previousName = "ตลาดตัวอย่าง ตากหลาดนัด";
+  const marketName = "ตลาดนัดเมืองตาก";
+  const marketDescription = "ตลาดนัดตัวอย่างในจังหวัดตาก พร้อมแผนผังแผงร้านค้า ตำแหน่งในแผนที่เป็นบริเวณอำเภอเมืองตาก";
+  const marketAddress = "อำเภอเมืองตาก จังหวัดตาก";
+  let rows = await pool.query("SELECT id FROM markets WHERE name IN (?,?) ORDER BY (name=?) DESC LIMIT 1", [marketName, previousName, marketName]);
   let marketId;
   if (rows.length) {
     marketId = Number(rows[0].id);
+    await pool.query("UPDATE markets SET name=?,description=?,address=?,is_active=1 WHERE id=?", [marketName, marketDescription, marketAddress, marketId]);
   } else {
     const result = await pool.query(
       "INSERT INTO markets (name,description,address,is_active) VALUES (?,?,?,1)",
-      [marketName, "ตลาดตัวอย่างสำหรับทดลองใช้งาน ปรับข้อมูลและผังจริงก่อนเปิดให้ลูกค้า", "ข้อมูลสถานที่ตัวอย่าง"]
+      [marketName, marketDescription, marketAddress]
     );
     marketId = Number(result.insertId);
   }
@@ -53,6 +84,115 @@ async function seedInitialMarket() {
     "INSERT IGNORE INTO stalls (market_id,stall_code,map_x,map_y,status) VALUES (?,?,?,?, 'available')",
     stalls
   );
+
+  const additionalMarkets = [
+    { name: "ตลาดเย็นริมปิง", description: "ตลาดเย็นบรรยากาศริมแม่น้ำปิง", address: "ริมแม่น้ำปิง อำเภอเมืองตาก จังหวัดตาก" },
+    { name: "ตลาดชุมชนแม่สอด", description: "ตลาดสินค้าชุมชนและของดีอำเภอแม่สอด", address: "อำเภอแม่สอด จังหวัดตาก" },
+  ];
+  const additionalMarketIds = new Map();
+  for (const marketData of additionalMarkets) {
+    const existing = await pool.query("SELECT id FROM markets WHERE name=? LIMIT 1", [marketData.name]);
+    let additionalMarketId;
+    if (existing.length) {
+      additionalMarketId = Number(existing[0].id);
+      await pool.query("UPDATE markets SET description=?,address=?,is_active=1 WHERE id=?", [marketData.description, marketData.address, additionalMarketId]);
+    } else {
+      const result = await pool.query("INSERT INTO markets (name,description,address,is_active) VALUES (?,?,?,1)", [marketData.name, marketData.description, marketData.address]);
+      additionalMarketId = Number(result.insertId);
+    }
+    additionalMarketIds.set(marketData.name, additionalMarketId);
+    const additionalStalls = [];
+    for (let index = 0; index < 32; index += 1) {
+      const row = Math.floor(index / 8);
+      const column = index % 8;
+      additionalStalls.push([additionalMarketId, `A${String(index + 1).padStart(2, "0")}`, 8 + column * 12, 12 + row * 24]);
+    }
+    await pool.batch("INSERT IGNORE INTO stalls (market_id,stall_code,map_x,map_y,status) VALUES (?,?,?,?, 'available')", additionalStalls);
+  }
+
+  const showcaseShops = [
+    { email: "demo-krua@example.invalid", name: "ครัวริมคลอง", category: "อาหาร", description: "ข้าวกะเพราและอาหารจานเดียว ทำสดใหม่ทุกจาน", contact: "" },
+    { email: "demo-chuenjai@example.invalid", name: "ชื่นใจชานม", category: "เครื่องดื่ม", description: "ชาไทย ชานม และเครื่องดื่มเย็นชื่นใจ", contact: "" },
+    { email: "demo-kanom@example.invalid", name: "ขนมบ้านใบตอง", category: "ของหวาน", description: "ขนมไทยและขนมทำมือ หวานพอดี", contact: "" },
+    { email: "demo-kram@example.invalid", name: "ผ้าครามละไม", category: "งานคราฟต์", description: "งานผ้าครามและของทำมือจากชุมชน", contact: "" },
+    { email: "demo-noodle@example.invalid", name: "ก๋วยเตี๋ยวเรือป้าจันทร์", category: "อาหาร", description: "ก๋วยเตี๋ยวเรือชามเล็ก น้ำซุปเข้มข้น", contact: "" },
+    { email: "demo-coffee@example.invalid", name: "กาแฟดอยมูเซอ", category: "เครื่องดื่ม", description: "กาแฟหอมเข้มและเครื่องดื่มชงสด", contact: "" },
+    { email: "demo-banana@example.invalid", name: "กล้วยอบบ้านตาก", category: "ของหวาน", description: "กล้วยอบและของฝากทำสดจากชุมชน", contact: "" },
+    { email: "demo-basket@example.invalid", name: "จักสานแม่สอด", category: "งานคราฟต์", description: "ตะกร้าและของใช้จักสานทำมือ", contact: "" },
+    { email: "demo-khao-soi@example.invalid", name: "ข้าวซอยเมืองตาก", category: "อาหาร", description: "ข้าวซอยไก่และเนื้อ น้ำแกงหอมเครื่องเทศ เสิร์ฟพร้อมเครื่องเคียง", contact: "" },
+    { email: "demo-moo-ping@example.invalid", name: "หมูปิ้งเตาถ่านลุงเพิ่ม", category: "อาหาร", description: "หมูปิ้งหมักนุ่ม ย่างเตาถ่านหอม ๆ พร้อมข้าวเหนียว", contact: "" },
+    { email: "demo-somtum@example.invalid", name: "ตำแซ่บหน้าตลาด", category: "อาหาร", description: "ส้มตำ ยำ และไก่ย่าง รสจัดจ้านเลือกความเผ็ดได้", contact: "" },
+    { email: "demo-roti@example.invalid", name: "โรตีกรอบป้าหน่อย", category: "ของหวาน", description: "โรตีกรอบ โรตีกล้วย และโรตีใส่นมทำสดใหม่", contact: "" },
+    { email: "demo-coconut@example.invalid", name: "มะพร้าวปั่นบ้านสวน", category: "เครื่องดื่ม", description: "น้ำมะพร้าวสดและมะพร้าวปั่นจากสวนในจังหวัดตาก", contact: "" },
+    { email: "demo-juice@example.invalid", name: "ผลไม้ปั่นสดใส", category: "เครื่องดื่ม", description: "น้ำผลไม้ปั่นสด เลือกผลไม้และความหวานได้", contact: "" },
+    { email: "demo-craft-bag@example.invalid", name: "ถักทอของดีตาก", category: "งานคราฟต์", description: "กระเป๋าผ้าและของใช้ทำมือจากกลุ่มชุมชน", contact: "" },
+    { email: "demo-shirt@example.invalid", name: "เสื้อยืดลายเมืองตาก", category: "เสื้อผ้า", description: "เสื้อยืดลายท้องถิ่น ใส่สบาย มีหลายขนาด", contact: "" },
+    { email: "demo-vintage@example.invalid", name: "เสื้อผ้ามือสองคัดแล้ว", category: "เสื้อผ้า", description: "เสื้อผ้ามือสองสภาพดี คัดแบบและซักสะอาด", contact: "" },
+    { email: "demo-plants@example.invalid", name: "ต้นไม้ริมปิง", category: "ของใช้", description: "ต้นไม้กระถางเล็ก ไม้ประดับ และอุปกรณ์ดูแลต้นไม้", contact: "" },
+    { email: "demo-sauce@example.invalid", name: "น้ำพริกแม่อุไร", category: "อาหาร", description: "น้ำพริกทำสดหลายรส พร้อมผักและแคบหมู", contact: "" },
+    { email: "demo-bakery@example.invalid", name: "อบอุ่นเบเกอรี่", category: "ของหวาน", description: "ขนมปัง คุกกี้ และเค้กชิ้นเล็กอบใหม่ทุกวัน", contact: "" },
+    { email: "demo-household@example.invalid", name: "ของใช้ราคาสบาย", category: "ของใช้", description: "ของใช้ในบ้านชิ้นเล็ก คัดแบบใช้งานง่ายในราคาย่อมเยา", contact: "" },
+  ];
+  const showcaseDate = "2026-10-31";
+  for (const [index, shopData] of showcaseShops.entries()) {
+    let shopRows = await pool.query("SELECT id FROM shops WHERE email=? LIMIT 1", [shopData.email]);
+    let shopId;
+    if (shopRows.length) {
+      shopId = Number(shopRows[0].id);
+    } else {
+      const passwordHash = await bcrypt.hash(`${shopData.email}:${Date.now()}:${Math.random()}`, 12);
+      const result = await pool.query(
+        "INSERT INTO shops (email,password_hash,name,category,description,contact) VALUES (?,?,?,?,?,?)",
+        [shopData.email, passwordHash, shopData.name, shopData.category, shopData.description, shopData.contact]
+      );
+      shopId = Number(result.insertId);
+    }
+
+    const stallRows = await pool.query("SELECT id FROM stalls WHERE market_id=? AND stall_code=? LIMIT 1", [marketId, `A${String(index + 1).padStart(2, "0")}`]);
+    if (!stallRows.length) continue;
+    const existingBooking = await pool.query(
+      "SELECT id FROM bookings WHERE stall_id=? AND booking_date=? AND status IN ('pending','confirmed') LIMIT 1",
+      [stallRows[0].id, showcaseDate]
+    );
+    if (!existingBooking.length) {
+      await pool.query("INSERT INTO bookings (shop_id,stall_id,booking_date,status) VALUES (?,?,?,'confirmed')", [shopId, stallRows[0].id, showcaseDate]);
+    }
+  }
+
+  const additionalShowcaseShops = {
+    "ตลาดเย็นริมปิง": [
+      { email: "demo-ping-pork@example.invalid", name: "หมูทอดป้าศรีริมปิง", category: "อาหาร", description: "หมูทอดกระเทียมหอม ๆ เสิร์ฟกับข้าวเหนียวร้อน", contact: "" },
+      { email: "demo-ping-yum@example.invalid", name: "ยำแซ่บริมน้ำ", category: "อาหาร", description: "ยำสดใหม่ ปรุงรสจัดจ้านเลือกความเผ็ดได้", contact: "" },
+      { email: "demo-ping-chicken@example.invalid", name: "ไก่ทอดกรอบปิงปิง", category: "อาหาร", description: "ไก่ทอดกรอบนอกนุ่มใน หมักสูตรเฉพาะ", contact: "" },
+      { email: "demo-ping-squid@example.invalid", name: "หมึกย่างไฟแดง", category: "อาหาร", description: "ปลาหมึกย่างร้อน ๆ พร้อมน้ำจิ้มซีฟู้ด", contact: "" },
+      { email: "demo-ping-kanomkrok@example.invalid", name: "ขนมครกเตาถ่าน", category: "ของหวาน", description: "ขนมครกกะทิสด ขอบกรอบไส้แน่นทำใหม่ทุกถาด", contact: "" },
+      { email: "demo-ping-bualoy@example.invalid", name: "บัวลอยไข่หวานบ้านสวน", category: "ของหวาน", description: "บัวลอยแป้งนุ่มในน้ำกะทิหอม เสิร์ฟพร้อมไข่หวาน", contact: "" },
+      { email: "demo-ping-sugarcane@example.invalid", name: "น้ำอ้อยคั้นสดริมปิง", category: "เครื่องดื่ม", description: "น้ำอ้อยคั้นสดเย็นชื่นใจ ไม่เติมน้ำตาล", contact: "" },
+      { email: "demo-ping-tea@example.invalid", name: "ชามะนาววันสบาย", category: "เครื่องดื่ม", description: "ชาชงสดและชามะนาวรสเปรี้ยวหวาน", contact: "" },
+      { email: "demo-ping-shirts@example.invalid", name: "เสื้อผ้าวันหยุด", category: "เสื้อผ้า", description: "เสื้อผ้าใส่ง่ายหลายแบบและหลายขนาด", contact: "" },
+      { email: "demo-ping-beads@example.invalid", name: "ลูกปัดสีริมปิง", category: "งานคราฟต์", description: "เครื่องประดับลูกปัดทำมือ เลือกสีและแบบได้", contact: "" },
+      { email: "demo-ping-plants@example.invalid", name: "สวนจิ๋วริมทาง", category: "ของใช้", description: "ไม้ประดับและต้นไม้กระถางเล็กสำหรับแต่งบ้าน", contact: "" },
+      { email: "demo-ping-toys@example.invalid", name: "ของเล่นไม้บ้านช่าง", category: "งานคราฟต์", description: "ของเล่นไม้ทำมือ ขัดเรียบและลงสีปลอดภัย", contact: "" },
+    ],
+    "ตลาดชุมชนแม่สอด": [
+      { email: "demo-maesot-khao-soi@example.invalid", name: "ข้าวซอยแม่สอด", category: "อาหาร", description: "ข้าวซอยไก่สูตรเข้มข้น เสิร์ฟพร้อมเครื่องเคียง", contact: "" },
+      { email: "demo-maesot-mohinga@example.invalid", name: "โมฮิงกาสูตรชุมชน", category: "อาหาร", description: "ขนมจีนน้ำยาปลาสไตล์พม่า หอมเครื่องเทศ", contact: "" },
+      { email: "demo-maesot-khao-puk@example.invalid", name: "ข้าวปุกงาดำดอย", category: "ของหวาน", description: "ข้าวปุกย่างร้อน ๆ คลุกงาดำหอมกรุ่น", contact: "" },
+      { email: "demo-maesot-saiua@example.invalid", name: "ไส้อั่วเตาถ่านแม่สอด", category: "อาหาร", description: "ไส้อั่วสมุนไพรย่างเตาถ่าน สูตรพื้นบ้าน", contact: "" },
+      { email: "demo-maesot-mulberry@example.invalid", name: "ชาหม่อนบ้านดอย", category: "เครื่องดื่ม", description: "ชาใบหม่อนอบแห้งจากกลุ่มเกษตรกรชุมชน", contact: "" },
+      { email: "demo-maesot-coffee@example.invalid", name: "กาแฟชายแดน", category: "เครื่องดื่ม", description: "กาแฟคั่วหอมจากแหล่งปลูกบนพื้นที่สูง", contact: "" },
+      { email: "demo-maesot-kanom-tien@example.invalid", name: "ขนมเทียนยายคำ", category: "ของหวาน", description: "ขนมเทียนไส้หวานและไส้เค็มทำสดใหม่", contact: "" },
+      { email: "demo-maesot-fabric@example.invalid", name: "ผ้าทอลายชาติพันธุ์", category: "งานคราฟต์", description: "ผ้าทอมือและผืนผ้าลายดั้งเดิมจากชุมชน", contact: "" },
+      { email: "demo-maesot-bag@example.invalid", name: "กระเป๋าปักมือแม่สอด", category: "งานคราฟต์", description: "กระเป๋าผ้าปักลายด้วยมือ ทุกชิ้นมีเอกลักษณ์", contact: "" },
+      { email: "demo-maesot-basket@example.invalid", name: "หวายสานบ้านเรา", category: "งานคราฟต์", description: "ตะกร้าหวายและของใช้สานมือจากช่างในท้องถิ่น", contact: "" },
+      { email: "demo-maesot-honey@example.invalid", name: "น้ำผึ้งป่าแม่สอด", category: "ของใช้", description: "น้ำผึ้งธรรมชาติจากกลุ่มผู้เลี้ยงผึ้งในชุมชน", contact: "" },
+      { email: "demo-maesot-nuts@example.invalid", name: "ถั่วอบของฝากชายแดน", category: "ของหวาน", description: "ถั่วอบกรอบและของกินเล่นบรรจุสดใหม่", contact: "" },
+    ],
+  };
+  for (const [marketName, shops] of Object.entries(additionalShowcaseShops)) {
+    const targetMarketId = additionalMarketIds.get(marketName);
+    if (targetMarketId) await seedShowcaseShops(targetMarketId, shops, showcaseDate);
+  }
 }
 
 app.get("/api/health", asyncRoute(async (req, res) => { await pool.query("SELECT 1"); res.json({ data: { status: "ok", database: "connected" } }); }));
@@ -154,4 +294,4 @@ app.patch("/api/shops/me/bookings/:bookingId/cancel", requireShop, asyncRoute(as
 
 app.use((req, res) => sendError(res, 404, "NOT_FOUND", "ไม่พบ endpoint นี้"));
 app.use((error, req, res, next) => { if (res.headersSent) return next(error); console.error("Request failed:", error.code || error.message); return sendError(res, 500, "INTERNAL_ERROR", "เกิดข้อผิดพลาดภายในระบบ"); });
-initializeSchema().then(seedInitialMarket).then(() => app.listen(PORT, () => console.log(`Server listening on port ${PORT}`))).catch(error => { console.error("Database initialization failed:", error.code || error.message); process.exitCode = 1; });
+initializeSchema().then(seedInitialMarket).then(() => app.listen(3113, () => console.log(`Server listening on port ${PORT}`))).catch(error => { console.error("Database initialization failed:", error.code || error.message); process.exitCode = 1; });
